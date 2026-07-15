@@ -1,0 +1,13 @@
+services:
+  servicenow-monitor:
+    build: .
+    container_name: sn-monitor
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    shm_size: "1gb"
+    init: true
+    security_opt:
+      - no-new-privileges:true
