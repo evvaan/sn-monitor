@@ -1,107 +1,115 @@
-# ServiceNow Monitor
+# ServiceNow Monitor — versión efímera dentro del contenedor
 
-Este proyecto monitorea una instancia de ServiceNow y envía una notificación a un canal de Discord cuando detecta un ticket nuevo.
+Esta versión no crea carpetas `data`, no usa bind mounts y no declara volúmenes persistentes.
 
-## Requisitos
+Los tickets conocidos se mantienen solamente en memoria. Los logs, diagnósticos y el archivo de salud se guardan únicamente en la capa interna del contenedor: no se crea ninguna carpeta ni volumen en el host.
 
-* Docker
-* Docker Compose
+## Arranque
 
-Puedes verificar que estén instalados con:
-
-```bash
-docker --version
-docker compose version
-```
-
-## Estructura del proyecto
-
-```text
-service-now-docker/
-├── Dockerfile
-├── compose.yaml
-├── monitor.py
-├── discord_notifier.py
-├── requirements.txt
-├── README.md
-├── .env
-└── data/
-```
-
-## Configuración
-
-Antes de iniciar el contenedor es necesario crear el archivo `.env` con la configuración de ServiceNow y Discord.
-
-### ServiceNow
-
-Completa los datos de tu instancia y del usuario que utilizará el monitor.
-
-```env
-SERVICENOW_INSTANCE=https://tu-instancia.service-now.com
-SERVICENOW_USERNAME=usuario
-SERVICENOW_PASSWORD=contraseña
-```
-
-### Discord
-
-1. Crea un servidor (si aún no tienes uno).
-2. Crea un canal para recibir las notificaciones.
-3. En el canal entra a:
-
-```
-Editar canal
-    └── Integraciones
-          └── Webhooks
-                └── Nuevo Webhook
-```
-
-4. Asigna un nombre al Webhook y copia la URL generada.
-5. Agrega esa URL al archivo `.env`.
-
-```env
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxxxxxxxxxxxxxxx
-DISCORD_USERNAME=ServiceNow Monitor
-```
-
-## Archivo .env
-
-El archivo queda con una estructura similar a la siguiente:
-
-```env
-SERVICENOW_INSTANCE=https://tu-instancia.service-now.com
-SERVICENOW_USERNAME=usuario
-SERVICENOW_PASSWORD=contraseña
-
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxxxxxxxxxxxxxxx
-DISCORD_USERNAME=ServiceNow Monitor
-
-HEADLESS=true
-REFRESH_SECONDS=30
-REQUEST_TIMEOUT_SECONDS=20
-STATE_FILE=/app/data/tickets_conocidos.json
-```
-
-### Descripción de las variables
-
-| Variable                  | Descripción                                                     |
-| ------------------------- | --------------------------------------------------------------- |
-| `SERVICENOW_INSTANCE`     | URL de la instancia de ServiceNow.                              |
-| `SERVICENOW_USERNAME`     | Usuario utilizado para iniciar sesión en ServiceNow.            |
-| `SERVICENOW_PASSWORD`     | Contraseña del usuario.                                         |
-| `DISCORD_WEBHOOK_URL`     | URL del Webhook del canal de Discord.                           |
-| `DISCORD_USERNAME`        | Nombre que aparecerá en las notificaciones de Discord.          |
-| `HEADLESS`                | Ejecuta Chromium sin interfaz gráfica.                          |
-| `REFRESH_SECONDS`         | Tiempo entre cada consulta a ServiceNow.                        |
-| `REQUEST_TIMEOUT_SECONDS` | Tiempo máximo de espera para cada consulta.                     |
-| `STATE_FILE`              | Archivo donde se guarda el estado de los tickets ya procesados. |
-
-## Construcción y ejecución
-
-Para construir la imagen y levantar el contenedor ejecuta:
+Conserva tu archivo `.env` en la raíz del proyecto y ejecuta:
 
 ```bash
 docker compose up -d --build
 ```
 
-La primera vez puede tardar algunos minutos porque se descargan e instalan las dependencias necesarias, incluyendo Chromium.
+En una instalación nueva, `docker compose up -d` también construye la imagen si todavía no existe. Se recomienda `--build` después de sustituir el código para garantizar que Docker incorpore los cambios.
 
+No necesitas crear carpetas, ajustar permisos ni montar volúmenes.
+
+## Consultar el estado
+
+```bash
+docker ps --filter name=sn-monitor
+
+docker inspect --format='{{.State.Health.Status}}' sn-monitor
+```
+
+## Entrar al contenedor
+
+```bash
+docker exec -it sn-monitor sh
+```
+
+Dentro del contenedor:
+
+```bash
+# Log general
+tail -f /var/log/sn-monitor/monitor.log
+
+# Errores con traceback
+tail -n 250 /var/log/sn-monitor/error.log
+
+# Diagnósticos JSON, screenshots y HTML opcional
+ls -lah /var/log/sn-monitor/diagnostics
+
+# Estado del healthcheck
+cat /run/sn-monitor/health.json
+```
+
+También puedes consultar directamente sin abrir una shell:
+
+```bash
+docker exec sn-monitor tail -n 250 /var/log/sn-monitor/error.log
+
+docker exec sn-monitor sh -lc 'ls -lt /var/log/sn-monitor/diagnostics | head -20'
+```
+
+## Extraer un diagnóstico solamente cuando lo necesites
+
+Los archivos no salen del contenedor automáticamente. Para copiar uno manualmente:
+
+```bash
+docker cp sn-monitor:/var/log/sn-monitor/diagnostics/ARCHIVO.json .
+```
+
+## Comportamiento efímero
+
+Al reiniciar o recrear el contenedor:
+
+- En un reinicio normal del mismo contenedor se conservan los logs internos para poder depurar.
+- Al eliminar o recrear el contenedor se eliminan los logs y diagnósticos.
+- La lista de tickets conocidos siempre se elimina porque solamente vive en memoria.
+- La primera consulta crea una línea base en memoria.
+- Los tickets que ya existían durante ese arranque no generan notificación.
+- Los tickets asignados posteriormente sí generan notificación.
+
+Esto evita duplicados después de un reinicio sin guardar estado fuera del contenedor.
+
+## Recuperación automática
+
+La secuencia predeterminada es:
+
+1. Reintentos internos para errores de red, timeout, HTTP 408, 425, 429 y 5xx.
+2. Tras dos fallos de ciclo, vuelve a abrir My To-Do y recaptura payload, headers y token.
+3. Tras cuatro fallos, reinicia Chromium y crea una sesión nueva.
+4. Tras seis fallos, finaliza el proceso y Docker lo vuelve a iniciar mediante `restart: unless-stopped`.
+
+## Logs y diagnósticos
+
+Rutas internas:
+
+```text
+/var/log/sn-monitor/monitor.log
+/var/log/sn-monitor/error.log
+/var/log/sn-monitor/diagnostics/
+/run/sn-monitor/health.json
+```
+
+Los logs rotan dentro del contenedor. Los diagnósticos antiguos se eliminan automáticamente cuando superan el número o el tamaño configurado.
+
+Configuración predeterminada:
+
+```env
+LOG_MAX_BYTES=5242880
+LOG_BACKUP_COUNT=3
+DIAGNOSTIC_MAX_FILES=40
+DIAGNOSTIC_MAX_TOTAL_BYTES=100663296
+```
+
+Las contraseñas, cookies, autorizaciones, webhooks y headers que contienen `token` se redactan en los diagnósticos conocidos. Revisa cualquier JSON antes de compartirlo porque la respuesta de ServiceNow puede contener información de tickets.
+
+## Verificación del código
+
+```bash
+python -m unittest discover -s tests -v
+```

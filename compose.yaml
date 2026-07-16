@@ -1,13 +1,29 @@
 services:
   servicenow-monitor:
-    build: .
+    build:
+      context: .
     container_name: sn-monitor
     restart: unless-stopped
     env_file:
       - .env
-    volumes:
-      - ./data:/app/data
     shm_size: "1gb"
     init: true
+    stop_grace_period: 30s
     security_opt:
       - no-new-privileges:true
+
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+
+    logging:
+      driver: "local"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s

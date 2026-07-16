@@ -1,0 +1,24 @@
+test_first_query_creates_memory_baseline_without_notifications (test_monitor.EphemeralTrackerTests.test_first_query_creates_memory_baseline_without_notifications) ... Línea base creada. Los tickets actuales no se notifican.
+ok
+test_new_ticket_is_notified_and_kept_only_in_memory (test_monitor.EphemeralTrackerTests.test_new_ticket_is_notified_and_kept_only_in_memory) ... Línea base creada. Los tickets actuales no se notifican.
+Se detectaron 1 tickets nuevos.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+NUEVO TICKET ASIGNADO
+Número: INC002
+Tipo: Incident
+Prioridad: 3 - Moderada
+Estado: Open
+Asignado a: Usuario
+Descripción: Prueba
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+ok
+test_empty_rows_are_a_valid_my_todo_response (test_monitor.ParserTests.test_empty_rows_are_a_valid_my_todo_response) ... ok
+test_preparar_payload_only_changes_my_todo_element (test_monitor.ParserTests.test_preparar_payload_only_changes_my_todo_element) ... ok
+test_sensitive_diagnostics_are_redacted (test_monitor.ParserTests.test_sensitive_diagnostics_are_redacted) ... ok
+test_sensitive_raw_text_is_redacted (test_monitor.ParserTests.test_sensitive_raw_text_is_redacted) ... ok
+test_uses_matching_payload_index_not_result_zero (test_monitor.ParserTests.test_uses_matching_payload_index_not_result_zero) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.004s
+
+OK
