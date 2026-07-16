@@ -1,6 +1,6 @@
 .env
 __pycache__/
 *.py[cod]
-.venv/
-data/*
-!data/.gitkeep
+.pytest_cache/
+*.zip
+*.tar.gz
