@@ -162,8 +162,6 @@ class QueryResult:
     tickets: list[dict[str, str]]
 
 
-
-
 # =============================================================================
 # LOGGING, ARCHIVOS Y DIAGNÓSTICO
 # =============================================================================
@@ -1156,11 +1154,20 @@ class ServiceNowRuntime:
 
         try:
             logger.info("Abriendo My To-Do...")
-            navegar_seguro(page, TODO_URL, esperar="commit")
+            navegar_seguro(page, TODO_URL, esperar="domcontentloaded")
 
             if es_pagina_login(page.url):
                 self.iniciar_sesion()
-                navegar_seguro(page, TODO_URL, esperar="commit")
+                navegar_seguro(page, TODO_URL, esperar="domcontentloaded")
+                
+            # -- INICIO PAUSA DE ESTABILIZACIÓN --
+            logger.info("Esperando estabilización del frontend para evitar abortos (net::ERR_ABORTED)...")
+            try:
+                # Damos tiempo a que los macroponents hidraten
+                page.wait_for_load_state("networkidle", timeout=12_000)
+            except Exception as e:
+                logger.debug("La red no se estabilizó del todo, pero continuamos (timeout): %s", e)
+            # -- FIN PAUSA DE ESTABILIZACIÓN --
 
             logger.info("Esperando el Data Broker de My To-Do. URL: %s", page.url)
             limite = time.monotonic() + CAPTURE_TIMEOUT_SECONDS
@@ -1427,6 +1434,12 @@ class ServiceNowRuntime:
                 last_error = ServiceNowTransportError(
                     f"Fallo de transporte de Playwright: {exc}"
                 )
+                
+                # Si perdimos el driver, los retries internos no servirán. Salimos de inmediato.
+                if "Connection closed" in str(exc) or "browser has been closed" in str(exc):
+                    logger.error("Error crítico de Playwright detectado. Abortando retries internos.")
+                    raise last_error from exc
+                    
                 if intento < SERVICENOW_REQUEST_ATTEMPTS:
                     espera = exponential_delay(intento)
                     logger.warning("%s Reintento en %.1f segundos.", last_error, espera)
@@ -1615,15 +1628,19 @@ def run_monitor() -> None:
                         f"{type(exc).__name__}: {exc}",
                     )
 
+                    str_exc = str(exc)
+                    es_error_critico_driver = "Connection closed" in str_exc or "browser has been closed" in str_exc
+
                     should_recapture = (
                         isinstance(exc, SessionExpiredError)
                         or fallos_consecutivos >= RECAPTURE_AFTER_FAILURES
+                        or es_error_critico_driver
                     )
 
                     if should_recapture:
                         restart = (
-                            fallos_consecutivos
-                            >= RESTART_BROWSER_AFTER_FAILURES
+                            fallos_consecutivos >= RESTART_BROWSER_AFTER_FAILURES
+                            or es_error_critico_driver
                         )
                         try:
                             logger.warning(
